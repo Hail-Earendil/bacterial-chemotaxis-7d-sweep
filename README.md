@@ -1,2 +1,20 @@
 # bacterial-chemotaxis-7d-sweep
-7D Sweep Code for the Paper "Apparent Selection Pressure for Channel Capacity In E. coli Bacterial Chemotactic Sensor"
+
+Code and precomputed results for the paper:
+
+**“Apparent Selection Pressure for Channel Capacity in *E. coli* Bacterial Chemotactic Sensor”**
+
+This repository contains the Python script that runs a **7-dimensional parameter sweep** of an MWC-style receptor model, and exports the numerical outputs and figures used for analysis.
+
+Running the script produces an output folder for a run, containing:
+- A saved **`.npz` file** that contains the 7D sweep results
+- **Logs** / warning summaries
+- **Pair-wise R Coefficient**
+- **Tables**
+- **Line-Plots** (1D slices through the 7D sweep)
+- **Heatmaps** (2D slices through the 7D sweep)
+- **Full Panels** (grids of heatmaps)
+
+This repo also include a `results/` folder with precomputed outputs (so you can inspect figures/tables without rerunning).
+
+This software was created by Scripps College under Army Research Office (ARO) Award Number W911NF-25-1-0260. ARO, as the Federal awarding agency, reserves a royalty-free, nonexclusive and irrevocable right to reproduce, publish, or otherwise use this software for Federal purposes, and to authorize others to do so in accordance with 2 CFR 200.315(b).
