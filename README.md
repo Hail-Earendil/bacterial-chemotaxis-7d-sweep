@@ -15,7 +15,4 @@ Running the script produces an output folder for a run, containing:
 - **Heatmaps** (2D slices through the 7D sweep)
 - **Full Panels** (grids of heatmaps)
 
-The results from the script an be found in this link:
-https://drive.google.com/file/d/1lIl0EFprBRgc0ylSfkfXCj4wuF7zzB5S/view?usp=sharing
-
 This software was created by Scripps College under Army Research Office (ARO) Award Number W911NF-25-1-0260. ARO, as the Federal awarding agency, reserves a royalty-free, nonexclusive and irrevocable right to reproduce, publish, or otherwise use this software for Federal purposes, and to authorize others to do so in accordance with 2 CFR 200.315(b).
