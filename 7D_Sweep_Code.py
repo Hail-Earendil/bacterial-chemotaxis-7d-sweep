@@ -1488,8 +1488,8 @@ def plot_px_vs_c(c_vals: np.ndarray, pX: np.ndarray,
     fig, ax = plt.subplots(figsize=(7.5, 4.6))
     ax.plot(c_vals, pX, lw=2)
     ax.set_xscale("log")
-    ax.set_xlabel("Ligand c (mM)")
-    ax.set_ylabel("Optimal Input $p_X^*(c)$")
+    ax.set_xlabel(r"Ligand concentration $c$ (mM)")
+    ax.set_ylabel(r"Capacity-achieving input distribution $p_{\mathrm{in}}^*(c)$")
     if title:
         ax.set_title(title)
 
@@ -1518,12 +1518,12 @@ def plot_px_vs_c(c_vals: np.ndarray, pX: np.ndarray,
 def plot_pa_vs_c(c_vals: np.ndarray, pa: np.ndarray,
                  savepath: str | Path | None = None,
                  show: bool = False,
-                 title: str | None = r"$p_\mathrm{active}(c)$") -> None:
+                 title: str | None = r"$p(c)$") -> None:
     fig, ax = plt.subplots(figsize=(7.5, 4.6))
     ax.plot(c_vals, pa, lw=2)
     ax.set_xscale("log")
-    ax.set_xlabel("Ligand c (mM)")
-    ax.set_ylabel(r"$p_\mathrm{active}(c)$")
+    ax.set_xlabel("Ligand concentration $c$ (mM)")
+    ax.set_ylabel(r"$p(c)$")
     fig.tight_layout()
     if savepath:
         savepath = Path(savepath)
@@ -1536,12 +1536,12 @@ def plot_pa_vs_c(c_vals: np.ndarray, pa: np.ndarray,
 def plot_py(pY: np.ndarray,
             savepath: str | Path | None = None,
             show: bool = False,
-            title: str | None = "$p_Y^*$ (Inactive/Active)") -> None:
+            title: str | None = "$p^*(s)$ (Inactive/Active)") -> None:
     fig, ax = plt.subplots(figsize=(5.2, 4.6))
     ax.bar([0, 1], pY)
     ax.set_xticks([0, 1])
     ax.set_xticklabels(["Inactive", "Active"])
-    ax.set_ylabel("$p_Y^*$")
+    ax.set_ylabel(r"Optimal output probability $p^*(s)$")
     if title:
         ax.set_title(title)
     fig.tight_layout()
@@ -1580,7 +1580,7 @@ def export_ba_px_py_per_strain(bio_list: list[dict],
         plot_pa_vs_c(
             res["c_vals"], res["pa"],
             savepath=subdir / f"{label}_pactive_vs_c.png",
-            title=f"Strain {label}: $p_\\mathrm{{active}}(c)$"
+            title=f"Strain {label}: $p(c)$"
         )
         plot_py(
             res["pY"],
@@ -1607,11 +1607,11 @@ def export_ba_px_py_per_strain(bio_list: list[dict],
                 item["c_vals"],
                 item["pa"],
                 lw=1.8,
-                label=f"strain {item['label']}"
+                label=f"{item['label']}"
             )
         ax.set_xscale("log")
         ax.set_xlabel("Ligand c (mM)")
-        ax.set_ylabel(r"$p_\mathrm{active}(c)$")
+        ax.set_ylabel(r"$p(c)$")
         ax.legend(title="strain", fontsize=8, frameon=True, loc="best")
         ax.grid(True, which="both", linestyle=":", alpha=0.35)
         fig.tight_layout()
@@ -1624,12 +1624,11 @@ def export_ba_px_py_per_strain(bio_list: list[dict],
                 item["c_vals"],
                 item["pX"],
                 lw=1.8,
-                label=f"strain {item['label']}"
+                label=f"{item['label']}"
             )
         ax.set_xscale("log")
-        ax.set_xlabel("Ligand c (mM)")
-        ax.set_ylabel(r"Optimal Input $p_X^*(c)$")
-        ax.set_title(r"All strains: optimal input $p_X^*(c)$")
+        ax.set_xlabel("Ligand concentration $c$ (mM)")
+        ax.set_ylabel(r"Capacity-achieving input distribution $p_{\mathrm{in}}^*(c)$")
         ax.legend(title="strain", fontsize=8, frameon=True, loc="best")
         ax.grid(True, which="both", linestyle=":", alpha=0.35)
         fig.tight_layout()
@@ -1680,7 +1679,7 @@ def export_combined_pY_grouped(bio_list: list[dict],
     ax.set_xticks(x)
     ax.set_xticklabels(strain_labels)
     ax.set_xlabel("Strain")
-    ax.set_ylabel(r"Optimal output probability $p_Y^*$")
+    ax.set_ylabel(r"Optimal output probability $p^*(s)$")
     ax.set_ylim(0.0, 1.05)
     ax.legend(frameon=True, loc="best")
     ax.grid(axis="y", linestyle=":", alpha=0.3)
@@ -2067,164 +2066,6 @@ def tableb_grad_norm_fixed_steps(
 
     return float(np.sqrt(g2))
 
-def tableb_global_ref_zoom_max_one_seed(
-    *,
-    dep: str,
-    bounds: Dict[str, Tuple[float, float]],
-    steps: TableBStepConfig,
-    samples_per_round: int,
-    rounds: int,
-    shrink: float,
-    seed: int,
-    progress_cb=None,
-) -> float:
-    rng = np.random.default_rng(int(seed))
-
-    def from_u(u: np.ndarray) -> Dict[str, float]:
-        p_out: Dict[str, float] = {}
-        for i, name in enumerate(INDEP_VARS):
-            if name in LOG_VARS:
-                p_out[name] = float(10.0 ** float(u[i]))
-            else:
-                p_out[name] = float(u[i])
-        return p_out
-
-    lo_u = []
-    hi_u = []
-    for name in INDEP_VARS:
-        lo, hi = bounds[name]
-        if name in LOG_VARS:
-            lo_u.append(float(np.log10(max(lo, 1e-300))))
-            hi_u.append(float(np.log10(max(hi, 1e-300))))
-        else:
-            lo_u.append(float(lo))
-            hi_u.append(float(hi))
-    lo_u = np.array(lo_u, float)
-    hi_u = np.array(hi_u, float)
-
-    best = -np.inf
-    best_u = (lo_u + hi_u) / 2.0
-
-    cur_lo = lo_u.copy()
-    cur_hi = hi_u.copy()
-
-    for _ in range(int(rounds)):
-        for _ in range(int(samples_per_round)):
-            u = cur_lo + rng.random(size=cur_lo.shape) * (cur_hi - cur_lo)
-            p = from_u(u)
-
-            for name in INDEP_VARS:
-                lo, hi = bounds[name]
-                p[name] = _tableb_clamp(p[name], lo, hi)
-
-            g = tableb_grad_norm_fixed_steps(p, dep, steps=steps, bounds=bounds)
-
-            if progress_cb is not None:
-                try:
-                    progress_cb(g)
-                except Exception:
-                    pass
-
-            if np.isfinite(g) and g > best:
-                best = float(g)
-                best_u = u.copy()
-
-        span = (cur_hi - cur_lo) * float(shrink)
-        cur_lo = np.maximum(best_u - 0.5 * span, lo_u)
-        cur_hi = np.minimum(best_u + 0.5 * span, hi_u)
-
-    return float(best) if np.isfinite(best) else float("nan")
-
-def tableb_global_ref_zoom_max_multi_seed(
-    *,
-    dep: str,
-    grids: dict,
-    steps: TableBStepConfig,
-    seeds: Sequence[int],
-    samples_per_round: int,
-    rounds: int,
-    shrink: float,
-    progress: bool = True,
-    eta_every_sec: float = 10.0,
-) -> tuple[float, Dict[int, float]]:
-    bounds = _tableb_bounds_from_grids(grids)
-
-    total_evals = int(len(list(seeds)) * int(rounds) * int(samples_per_round))
-
-    def _hm(seconds: float) -> str:
-        if not np.isfinite(seconds) or seconds < 0:
-            return "?"
-        s = int(round(seconds))
-        h = s // 3600
-        m = (s % 3600) // 60
-        ss = s % 60
-        if h > 0:
-            return f"{h:d}h{m:02d}m"
-        if m > 0:
-            return f"{m:d}m{ss:02d}s"
-        return f"{ss:d}s"
-
-    done = 0
-    t0 = time.time()
-    t_last = t0
-    global_best_seen = -np.inf
-
-    if progress:
-        print(f"[Table B][zoom_max] dep={dep} | {len(list(seeds))} seeds x {int(rounds)} rounds x {int(samples_per_round)} samples = {total_evals} evals")
-
-    def _tick(g_val: float) -> None:
-        nonlocal done, t_last, global_best_seen
-        done += 1
-        if np.isfinite(g_val) and float(g_val) > global_best_seen:
-            global_best_seen = float(g_val)
-
-        if not progress:
-            return
-        now = time.time()
-        if (now - t_last) >= float(eta_every_sec) or done == total_evals:
-            elapsed = now - t0
-            rate = done / elapsed if elapsed > 1e-12 else 0.0
-            eta = (total_evals - done) / rate if rate > 1e-12 else float("inf")
-            pct = 100.0 * done / total_evals if total_evals > 0 else 100.0
-            best_txt = f"{global_best_seen:.6g}" if np.isfinite(global_best_seen) else "nan"
-            print(f"[Table B][zoom_max] dep={dep} | {done}/{total_evals} ({pct:5.1f}%) | elapsed {_hm(elapsed)} | ETA {_hm(eta)} | best_seen {best_txt}")
-            t_last = now
-
-    per_seed: Dict[int, float] = {}
-    best = -np.inf
-
-    for s in seeds:
-        g = tableb_global_ref_zoom_max_one_seed(
-            dep=dep,
-            bounds=bounds,
-            steps=steps,
-            samples_per_round=int(samples_per_round),
-            rounds=int(rounds),
-            shrink=float(shrink),
-            seed=int(s),
-            progress_cb=_tick,
-        )
-        per_seed[int(s)] = float(g)
-        if np.isfinite(g) and g > best:
-            best = float(g)
-
-    return (float(best) if np.isfinite(best) else float("nan")), per_seed
-
-def build_tableB_globalmax_seeds_rows(
-    *,
-    per_seed_by_metric: Dict[str, Dict[int, float]],
-    global_max_by_metric: Dict[str, float],
-    seeds: Sequence[int],
-) -> list[dict]:
-    rows: list[dict] = []
-    for metric, seed_map in per_seed_by_metric.items():
-        row = {"metric": metric, "global_max_used": float(global_max_by_metric.get(metric, np.nan))}
-        for s in seeds:
-            row[f"seed_{int(s)}"] = float(seed_map.get(int(s), np.nan))
-        rows.append(row)
-    return rows
-
-
 def build_table_A_capacity(results: dict,
                            bio_list: list[dict]) -> list[dict]:
     C = np.asarray(results["C_bits"], float)
@@ -2265,13 +2106,11 @@ def build_table_A_metric(results: dict,
         })
     return rows
 
-def build_table_B_gradnorm(
+def build_table_B_gradnorm_combined(
     results: dict,
     bio_list: list[dict],
-    dep_key: str,
     *,
-    global_max_grad: float,
-    steps: TableBStepConfig,
+    steps: TableBStepConfig
 ) -> list[dict]:
     grids = results["grids"]
     bounds = _tableb_bounds_from_grids(grids)
@@ -2279,13 +2118,18 @@ def build_table_B_gradnorm(
     rows: list[dict] = []
     for d in bio_list:
         p = {k: float(d[k]) for k in INDEP_VARS}
-        g_bio = tableb_grad_norm_fixed_steps(p, dep_key, steps=steps, bounds=bounds)
+
+        gC  = tableb_grad_norm_fixed_steps(p, "C_bits",  steps=steps, bounds=bounds)
+        gDR = tableb_grad_norm_fixed_steps(p, "DR_out",  steps=steps, bounds=bounds)
+        gH  = tableb_grad_norm_fixed_steps(p, "nH",      steps=steps, bounds=bounds)
+
         rows.append({
             "strain": d.get("name", d.get("label", "?")),
-            "grad_L2_at_bio": float(g_bio),
-            "grad_L2_max_over_7D": float(global_max_grad),
-            "ratio_bio_over_maxgrad": float(g_bio / global_max_grad) if (np.isfinite(g_bio) and np.isfinite(global_max_grad) and global_max_grad > 0) else np.nan,
+            "grad_L2_C": float(gC),
+            "grad_L2_DR": float(gDR),
+            "grad_L2_neff": float(gH),
         })
+
     return rows
 
 def _save_npz(npz_path: Path,
@@ -2771,7 +2615,7 @@ def export_full_panel_pages_per_strain(
             ("DR_out", vD),
             ("nH",     vH),
         ):
-            savepath = outdir / f"strain{label}_{dep}_full.{fmt}"
+            savepath = outdir / f"strain{label}_{_dfile(dep)}_full.{fmt}"
             plot_full_panel_21(
                 results, dep,
                 fixed=fixed,
@@ -3048,47 +2892,17 @@ def main():
     tableA_DR = build_table_A_metric(results, bio_list,
                                      dep_key="DR_out",
                                      theoretical_max=1.0)
-    
+        
     steps = TableBStepConfig(dlog10=0.01, dN=1.0)
-    seeds = [0, 1, 2, 3, 4]
-    zoom_samples_per_round = 200
-    zoom_rounds = 4
-    zoom_shrink = 0.4
 
     reset_tableb_metrics_cache()
-
-    G_C,  per_C  = tableb_global_ref_zoom_max_multi_seed(
-        dep="C_bits", grids=results["grids"], steps=steps, seeds=seeds,
-        samples_per_round=zoom_samples_per_round, rounds=zoom_rounds, shrink=zoom_shrink
-    )
-    tableB_C  = build_table_B_gradnorm(results, bio_list, dep_key="C_bits", global_max_grad=G_C, steps=steps)
-
-    G_nH, per_nH = tableb_global_ref_zoom_max_multi_seed(
-        dep="nH", grids=results["grids"], steps=steps, seeds=seeds,
-        samples_per_round=zoom_samples_per_round, rounds=zoom_rounds, shrink=zoom_shrink
-    )
-    tableB_nH = build_table_B_gradnorm(results, bio_list, dep_key="nH", global_max_grad=G_nH, steps=steps)
-
-    G_DR, per_DR = tableb_global_ref_zoom_max_multi_seed(
-        dep="DR_out", grids=results["grids"], steps=steps, seeds=seeds,
-        samples_per_round=zoom_samples_per_round, rounds=zoom_rounds, shrink=zoom_shrink
-    )
-    tableB_DR = build_table_B_gradnorm(results, bio_list, dep_key="DR_out", global_max_grad=G_DR, steps=steps)
-
-    seed_rows = build_tableB_globalmax_seeds_rows(
-        per_seed_by_metric={"C_bits": per_C, "nH": per_nH, "DR_out": per_DR},
-        global_max_by_metric={"C_bits": G_C, "nH": G_nH, "DR_out": G_DR},
-        seeds=seeds,
-    )
-    save_table_csv(seed_rows, (base / "tables" / "table_B_globalmax_grad_zoommax_5seeds.csv"))
-
+    tableB_grad = build_table_B_gradnorm_combined(results, bio_list, steps=steps)
     outdir = base
     save_table_csv(tableA_C,  outdir / "tables" / "table_A_capacity.csv")
-    save_table_csv(tableB_C,  outdir / "tables" / "table_B_capacity_gradnorm.csv")
     save_table_csv(tableA_nH, outdir / "tables" / "table_A_neff.csv")
-    save_table_csv(tableB_nH, outdir / "tables" / "table_B_neff_gradnorm.csv")
     save_table_csv(tableA_DR, outdir / "tables" / "table_A_DR.csv")
-    save_table_csv(tableB_DR, outdir / "tables" / "table_B_DR_gradnorm.csv")
+    save_table_csv(tableB_grad, outdir / "tables" / "table_B_gradnorm.csv")
+
 
     print("[DONE] All plots/tables written.") 
 
