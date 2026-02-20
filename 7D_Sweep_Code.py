@@ -412,49 +412,172 @@ def build_channel_matrix_binary(p_active_vals: np.ndarray,
     P /= P.sum(axis=1, keepdims=True)
     return P
 
-def blahut_arimoto(P: np.ndarray,
-                   *, tol: float = 1e-8, max_iter: int = 100000,
-                   r_init: np.ndarray | None = None
-                   ) -> tuple[float, np.ndarray, np.ndarray, int]:
+CAP_GRID_M_MIN = 30
+CAP_GRID_M_MAX = 80
+
+BA_CAP_TOL_BITS = 3e-6
+BA_REQUIRE_CONSEC = 2
+BA_MAX_ITER = 5000
+BA_TOL_R_L1 = 1e-6
+BA_R_FLOOR = 1e-300
+BA_WARM_R_FLOOR = 1e-12
+BA_WARM_UNIFORM_MIX = 1e-3
+
+def blahut_arimoto(
+    P: np.ndarray,
+    *,
+    cap_tol_bits: float = 3e-6,
+    check_every: int = 25,
+    patience: int = 2,
+    min_iter: int = 200,
+    max_iter: int = 5000,
+    r_init: np.ndarray | None = None,
+    tol_r: float | None = None,
+    tol_r_check_every: int | None = None,
+    require_consecutive: int | None = None,
+) -> tuple[float, np.ndarray, np.ndarray, int]:
+
     EPS = 1e-300
     P = np.asarray(P, float)
-    if P.ndim != 2 or not np.all(np.isfinite(P)) or np.any(P < 0):
-        raise ValueError("Invalid P.")
+
     rowsum = P.sum(axis=1, keepdims=True)
     if np.any(rowsum <= 0):
         raise ValueError("Some rows of P sum to zero.")
     P = P / rowsum
+
     M, K = P.shape
-    r = (np.full(M, 1.0 / M, float)
-         if r_init is None
-         else np.asarray(r_init, float) / np.sum(r_init))
+
+    if r_init is None:
+        r = np.full(M, 1.0 / M, dtype=float)
+    else:
+        r = np.asarray(r_init, float)
+        r = np.maximum(r, BA_R_FLOOR)
+        s = float(np.sum(r))
+        r = (r / s) if (np.isfinite(s) and s > 0) else np.full(M, 1.0 / M, dtype=float)
+
+    if require_consecutive is not None:
+        patience = int(require_consecutive)
+
+    check_every = int(max(1, check_every))
+    patience = int(max(1, patience))
+    min_iter = int(max(1, min_iter))
+    max_iter = int(max(1, max_iter))
+
+    if tol_r_check_every is None:
+        tol_r_check_every = check_every
+    tol_r_check_every = int(max(1, tol_r_check_every))
+
+    prevC = None
+    smallC = 0
+
+    prev_r_check = None
+    smallR = 0
+
+    ln2 = np.log(2.0)
 
     for it in range(1, max_iter + 1):
-        q = r @ P
-        q = np.maximum(q, EPS)
-        D = np.log(P + EPS) - np.log(q[None, :] + EPS)
-        z = np.exp((P * D).sum(axis=1))
-        s = z.sum()
-        r_new = (z / s) if (np.isfinite(s) and s > 0) else r.copy()
-        if np.linalg.norm(r_new - r, 1) < tol:
-            r = r_new
-            n_iter = it
-            break
-        r = r_new
-    else:
-        n_iter = max_iter
-        _warn_once(
-            "ba",
-            "Blahut–Arimoto hit max_iter; results may be slightly under the true capacity."
-        )
+        q = np.maximum(r @ P, EPS)  # (K,)
+        logz = np.sum(P * (np.log(P + EPS) - np.log(q[None, :] + EPS)), axis=1)  # (M,)
+        z = np.exp(logz)
+        r = r * z
+        r = np.maximum(r, BA_R_FLOOR)
+        r = r / np.sum(r)
+
+        if tol_r is not None and (it % tol_r_check_every == 0) and (it >= min_iter):
+            if prev_r_check is not None:
+                dr_l1 = float(np.sum(np.abs(r - prev_r_check)))
+                if dr_l1 < float(tol_r):
+                    smallR += 1
+                else:
+                    smallR = 0
+            prev_r_check = r.copy()
+
+            if smallR >= patience:
+                C_now = float(np.sum(r * logz) / ln2)
+                C_now = max(0.0, min(1.0, C_now))
+                pX = r
+                pY = np.maximum(pX @ P, EPS)
+                return C_now, pX, pY, it
+
+        if it % check_every == 0:
+            C_now = float(np.sum(r * logz) / ln2)
+            C_now = max(0.0, min(1.0, C_now))
+
+            if prevC is not None and it >= min_iter:
+                if abs(C_now - prevC) < cap_tol_bits:
+                    smallC += 1
+                else:
+                    smallC = 0
+                if smallC >= patience:
+                    pX = r
+                    pY = np.maximum(pX @ P, EPS)
+                    return C_now, pX, pY, it
+
+            prevC = C_now
 
     pX = r
     pY = np.maximum(pX @ P, EPS)
-    C_bits = float(np.sum(
-        pX[:, None] * P * (np.log2(P + EPS) - np.log2(pY[None, :] + EPS))
-    ))
+    q = np.maximum(pX @ P, EPS)
+    logz = np.sum(P * (np.log(P + EPS) - np.log(q[None, :] + EPS)), axis=1)
+    C_bits = float(np.sum(pX * logz) / ln2)
     C_bits = max(0.0, min(1.0, C_bits))
-    return C_bits, pX, pY, n_iter
+    return C_bits, pX, pY, max_iter
+
+@dataclass
+class BAWarmState:
+    c_vals: np.ndarray 
+    pX: np.ndarray
+
+def warm_start_r_from_prev(
+    c_new: np.ndarray,
+    prev: BAWarmState | None,
+) -> np.ndarray | None:
+
+    if prev is None:
+        return None
+
+    c_prev = np.asarray(prev.c_vals, float)
+    r_prev = np.asarray(prev.pX, float)
+    c_new = np.asarray(c_new, float)
+
+    if c_prev.ndim != 1 or r_prev.ndim != 1 or c_new.ndim != 1:
+        return None
+    if c_prev.size != r_prev.size or c_prev.size < 2 or c_new.size < 2:
+        return None
+    if np.any(~np.isfinite(c_prev)) or np.any(~np.isfinite(r_prev)) or np.any(~np.isfinite(c_new)):
+        return None
+    if np.any(c_prev <= 0) or np.any(c_new <= 0):
+        return None
+
+    r_prev = np.maximum(r_prev, 0.0)
+    s = float(np.sum(r_prev))
+    if not (np.isfinite(s) and s > 0):
+        return None
+    r_prev = r_prev / s
+
+    x_prev = np.log(c_prev)
+    x_new = np.log(c_new)
+
+    if not np.all(np.diff(x_prev) > 0):
+        order = np.argsort(x_prev)
+        x_prev = x_prev[order]
+        r_prev = r_prev[order]
+
+    r_new = np.interp(x_new, x_prev, r_prev, left=float(r_prev[0]), right=float(r_prev[-1]))
+    r_new = np.maximum(r_new, BA_WARM_R_FLOOR)
+
+    s2 = float(np.sum(r_new))
+    if not (np.isfinite(s2) and s2 > 0):
+        return None
+    r_new = r_new / s2
+
+    alpha = float(np.clip(BA_WARM_UNIFORM_MIX, 0.0, 1.0))
+    if alpha > 0.0:
+        M = int(r_new.size)
+        r_new = (1.0 - alpha) * r_new + alpha * (1.0 / M)
+        r_new = np.maximum(r_new, BA_WARM_R_FLOOR)
+        r_new = r_new / np.sum(r_new)
+    return r_new
 
 # All Three Metric Wrapper Functions
 def _interp_c_at_p(pa: np.ndarray,
@@ -476,30 +599,39 @@ def metrics_at_params_auto_c(
     KdA2: float,
     N_tar: float,
     N_tsr: float,
-    mode: str = "binary"
+    mode: str = "binary",
+    warm_state: BAWarmState | None = None,   # <--- NEW
 ) -> dict:
     c_vals, pa, info = pick_c_grid_from_params(
         L0=L0, KdI1=KdI1, KdA1=KdA1,
         KdI2=KdI2, KdA2=KdA2,
-        N_tar=N_tar, N_tsr=N_tsr
+        N_tar=N_tar, N_tsr=N_tsr,
+        M_min=CAP_GRID_M_MIN,
+        M_max=CAP_GRID_M_MAX
     )
 
-    p0, pinf = float(info["p0"]), float(info["pinf"])
-    p_min, p_max = (p0, pinf) if p0 <= pinf else (pinf, p0)
-    DR_p_signed = float(pinf - p0)
-    DR_out_mag  = float(abs(DR_p_signed))
+    logL0 = float(np.log(L0))
+    p0, pinf = endpoints_p0_pinf(
+        logL0, KdI1, KdA1, KdI2, KdA2, N_tar, N_tsr
+    )
 
-    heff = c50 = np.nan
-    if DR_out_mag >= FLAT_DELTA_P_THRESH and np.all(np.isfinite(pa)):
-        p_star = 0.5 * (p_min + p_max)
-        c50 = info.get("c50", np.nan)
-        if not (np.isfinite(c50) and c50 > 0):
-            c50 = _interp_c_at_p(pa, c_vals, p_star)
+    DR_p_signed = float(pinf - p0)
+    DR_out_mag = abs(DR_p_signed)
+
+    heff = np.nan
+    c50 = np.nan
+
+    if np.isfinite(p0) and np.isfinite(pinf) and abs(pinf - p0) > 0:
+        p_star = 0.5 * (p0 + pinf)
+        c50 = solve_c_at_p(
+            p_star, logL0,
+            KdI1, KdA1, KdI2, KdA2, N_tar, N_tsr
+        )
 
         if np.isfinite(c50) and c50 > 0:
             heff = heff_at_cstar(
                 c50, p_star,
-                p_min, p_max,
+                p0, pinf,
                 N_tar, N_tsr,
                 KdI1, KdA1, KdI2, KdA2,
                 return_abs=True
@@ -507,8 +639,19 @@ def metrics_at_params_auto_c(
 
     if mode != "binary":
         print("[WARN] metrics_at_params_auto_c: only 'binary' channel implemented; using binary.")
+
     P = build_channel_matrix_binary(pa)
-    C_bits, pX_opt, pY, iters = blahut_arimoto(P)
+
+    r_init = warm_start_r_from_prev(c_vals, warm_state)
+
+    C_bits, pX_opt, pY, iters = blahut_arimoto(
+        P,
+        r_init=r_init,
+        tol_r=BA_TOL_R_L1,
+        cap_tol_bits=BA_CAP_TOL_BITS,
+        require_consecutive=BA_REQUIRE_CONSEC,
+        max_iter=BA_MAX_ITER,
+    )
 
     return {
         "C_bits": float(C_bits),
@@ -517,6 +660,8 @@ def metrics_at_params_auto_c(
         "DR_out": float(DR_out_mag),
         "c50": float(c50) if np.isfinite(c50) else np.nan,
         "iters": int(iters),
+        "ba_c_vals": c_vals,
+        "ba_pX": pX_opt,
     }
 
 # Sweep machinery
@@ -543,7 +688,6 @@ class ProgressPrinter:
         total_minutes = int(round(seconds / 60.0))
         h, m = divmod(total_minutes, 60)
         return f" ({h}h {m}m)"
-
 
 def _ensure_contains(grid: np.ndarray, value: float,
                      *, as_int: bool = False) -> np.ndarray:
@@ -1465,10 +1609,18 @@ def ba_at_params(L0: float, KdI1: float, KdA1: float,
     c_vals, pa, info = pick_c_grid_from_params(
         L0=L0, KdI1=KdI1, KdA1=KdA1,
         KdI2=KdI2, KdA2=KdA2,
-        N_tar=N_tar, N_tsr=N_tsr
+        N_tar=N_tar, N_tsr=N_tsr,
+        M_min=CAP_GRID_M_MIN,
+        M_max=CAP_GRID_M_MAX
     )
     P = build_channel_matrix_binary(pa)
-    C_bits, pX, pY, iters = blahut_arimoto(P)
+    C_bits, pX, pY, iters = blahut_arimoto(
+        P,
+        tol_r=BA_TOL_R_L1,
+        cap_tol_bits=BA_CAP_TOL_BITS,
+        require_consecutive=BA_REQUIRE_CONSEC,
+        max_iter=BA_MAX_ITER,
+    )
     return dict(
         c_vals=c_vals,
         pa=pa,
@@ -2308,11 +2460,12 @@ def run_resumable_sweep_npz(npz_path: str | Path,
     N_tsr_grid = np.asarray(grids["N_tsr"], float)
 
     start_time = time.time()
-    deadline   = start_time + time_budget_hours * 3600.0
+    deadline   = float('inf')
     next_ckpt  = start_time + checkpoint_every_min * 60.0
     next_eta   = start_time + eta_every_min * 60.0
 
     i = int(cursor)
+    warm_state: BAWarmState | None = None   # <--- NEW
     while i < total:
         now = time.time()
         if now >= deadline:
@@ -2363,6 +2516,7 @@ def run_resumable_sweep_npz(npz_path: str | Path,
         Ns   = float(N_tsr_grid[g])
 
         if (L0 <= 0) or (KdI1 <= 0) or (KdA1 <= 0) or (KdI2 <= 0) or (KdA2 <= 0):
+            warm_state = None
             done_mask[a, b, c, d, e, f, g] = True
             i += 1
             continue
@@ -2378,15 +2532,35 @@ def run_resumable_sweep_npz(npz_path: str | Path,
                     L0=L0, KdI1=KdI1, KdA1=KdA1,
                     KdI2=KdI2, KdA2=KdA2,
                     N_tar=Nt, N_tsr=Ns,
-                    mode="binary"
+                    mode="binary",
+                    warm_state=warm_state,   # <--- NEW
                 )
 
             for k in DEP_VARS:
                 arrays[k][a, b, c, d, e, f, g] = np.float32(res.get(k, np.nan))
             iters[a, b, c, d, e, f, g] = int(res.get("iters", 0))
+
+            # --- WARM-START UPDATE (SUCCESS PATH ONLY) ---
+            try:
+                c_prev = res.get("ba_c_vals", None)
+                pX_prev = res.get("ba_pX", None)
+                if c_prev is not None and pX_prev is not None:
+                    c_prev = np.asarray(c_prev, float)
+                    pX_prev = np.asarray(pX_prev, float)
+                    if c_prev.ndim == 1 and pX_prev.ndim == 1 and c_prev.size == pX_prev.size and c_prev.size >= 2:
+                        warm_state = BAWarmState(c_vals=c_prev, pX=pX_prev)
+                    else:
+                        warm_state = None
+                else:
+                    warm_state = None
+            except Exception:
+                warm_state = None
+
             done_mask[a, b, c, d, e, f, g] = True
 
+
         except Exception as ex:
+            warm_state = None
             with WarnContext(ctx):
                 _warn_once("bracket", f"NPZ sweep exception at flat index {i}: {type(ex).__name__}: {ex}")
             done_mask[a, b, c, d, e, f, g] = True
@@ -2717,7 +2891,7 @@ def export_ba_convergence_reports(
     npz_path: str | Path,
     outdir: str | Path,
     *,
-    max_iter: int = 100000,
+    max_iter: int = BA_MAX_ITER,
     dr_eps: float = 1e-12,
     verbose: bool = True,
 ) -> dict:
@@ -2776,8 +2950,8 @@ def main():
 
     grids = build_grids_pilot(
         anchor,
-        points_log=7,
-        points_N=7,
+        points_log=6,
+        points_N=6,
         L0_span_dec=2.0,
         K_span_dec=2.0
     )
@@ -2802,7 +2976,7 @@ def main():
         anchor=anchor,
         time_budget_hours=12,
         checkpoint_every_min=30,
-        eta_every_min=1,
+        eta_every_min=0.2,
         progress=True
     )
 
@@ -2812,7 +2986,7 @@ def main():
     export_ba_convergence_reports(
         npz_path=npz_path,
         outdir=base / "tables",
-        max_iter=100000,
+        max_iter=BA_MAX_ITER,
         dr_eps=1e-12,
         verbose=True,
     )
