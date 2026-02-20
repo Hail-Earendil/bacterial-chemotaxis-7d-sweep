@@ -1215,16 +1215,26 @@ def plot_r2_dependent(results: dict,
 
 def export_r2_plot(results: dict, outdir: str | Path,
                    deps=("C_bits", "nH", "DR_out")) -> np.ndarray:
-    outdir = Path(outdir) / "plots"
-    outdir.mkdir(parents=True, exist_ok=True)
-    savepath = outdir / "r_coefficient.png"
-    R = plot_r2_dependent(
-        results,
-        deps=deps,
-        title="Pairwise correlation (R) among dependent variables",
-        savepath=savepath,
-        show=False
-    )
+    outdir = Path(outdir)
+    tables_dir = outdir / "tables"
+    tables_dir.mkdir(parents=True, exist_ok=True)
+
+    R, labels = r2_matrix_dependent(results, deps=deps, joint_mask=True)
+    rows: list[dict] = []
+    for i, row_name in enumerate(labels):
+        row = {"dep": row_name}
+        for j, col_name in enumerate(labels):
+            row[col_name] = float(R[i, j]) if np.isfinite(R[i, j]) else np.nan
+        rows.append(row)
+    save_table_csv(rows, tables_dir / "r_coefficient.csv")
+
+    old_png = outdir / "plots" / "r_coefficient.png"
+    if old_png.exists():
+        try:
+            old_png.unlink()
+        except Exception:
+            pass
+
     print("[R  ] Matrix:\n", np.array2string(R, precision=3, suppress_small=True))
     return R
 
@@ -2159,7 +2169,7 @@ def export_capacity_vs_vars_for_strains(
     export_metric_vs_vars_for_strains(
         results, bio_list, outdir,
         dep="C_bits",
-        out_subdir="capacity_curves",
+        out_subdir="curves/capacity_curves",
         y_label=r"Channel capacity (bits)",
         agg=agg,
         style=style,
@@ -2176,7 +2186,7 @@ def export_dynamic_range_vs_vars_for_strains(
     export_metric_vs_vars_for_strains(
         results, bio_list, outdir,
         dep="DR_out",
-        out_subdir="dynamic_range_curves",
+        out_subdir="curves/dynamic_range_curves",
         y_label=r"Dynamic range",
         agg=agg,
         style=style,
@@ -2193,7 +2203,7 @@ def export_neff_vs_vars_for_strains(
     export_metric_vs_vars_for_strains(
         results, bio_list, outdir,
         dep="nH",
-        out_subdir="neff_curves",
+        out_subdir="curves/neff_curves",
         y_label=r"Effective Hill coefficient $n_{\mathrm{eff}}$",
         agg=agg,
         style=style,
@@ -2210,7 +2220,7 @@ def export_capacity_vs_vars_combined_for_strains(
     export_metric_vs_vars_combined_for_strains(
         results, bio_list, outdir,
         dep="C_bits",
-        out_subdir="capacity_curves",
+        out_subdir="curves/capacity_curves",
         y_label=r"Channel capacity (bits)",
         agg=agg,
         style=style,
@@ -2227,7 +2237,7 @@ def export_dynamic_range_vs_vars_combined_for_strains(
     export_metric_vs_vars_combined_for_strains(
         results, bio_list, outdir,
         dep="DR_out",
-        out_subdir="dynamic_range_curves",
+        out_subdir="curves/dynamic_range_curves",
         y_label=r"Dynamic range",
         agg=agg,
         style=style,
@@ -2244,7 +2254,7 @@ def export_neff_vs_vars_combined_for_strains(
     export_metric_vs_vars_combined_for_strains(
         results, bio_list, outdir,
         dep="nH",
-        out_subdir="neff_curves",
+        out_subdir="curves/neff_curves",
         y_label=r"Effective Hill coefficient $n_{\mathrm{eff}}$",
         agg=agg,
         style=style,
@@ -2939,7 +2949,7 @@ def export_full_panel_pages_per_strain(
     vmax: float | None = None,
 ):
     
-    outdir = Path(outdir) / "full_panels"
+    outdir = Path(outdir) / "plots" / "full_panels"
     outdir.mkdir(parents=True, exist_ok=True)
 
     if style is None:
@@ -3136,7 +3146,7 @@ def main():
 
     base = BASE_DIR / run_tag
     base.mkdir(parents=True, exist_ok=True)
-    npz_path = base / "sweep_7d_long.npz"
+    npz_path = base / "7D_Sweep_Results.npz"
 
     results = run_resumable_sweep_npz(
         npz_path=npz_path,
