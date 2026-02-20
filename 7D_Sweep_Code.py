@@ -2030,6 +2030,124 @@ def export_metric_vs_vars_for_strains(
         fig.savefig(outdir / fname, dpi=240)
         plt.close(fig)
 
+def export_metric_vs_vars_combined_for_strains(
+    results: dict,
+    bio_list: list[dict],
+    outdir: str | Path,
+    *,
+    dep: str,
+    out_subdir: str,
+    y_label: str | None = None,
+    agg: str = "median",
+    style: CurveStyle | None = None,
+) -> None:
+    if dep not in DEP_VARS:
+        raise ValueError(f"Unknown dep '{dep}'. Options: {DEP_VARS}")
+
+    st = style if style is not None else CurveStyle()
+    outdir = Path(outdir) / out_subdir
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    fig = plt.figure(figsize=(12.8, 15.6))
+    gs = GridSpec(4, 4, figure=fig, wspace=0.32, hspace=0.36)
+    positions = [
+        (0, 0, 2), (0, 2, 4),
+        (1, 0, 2), (1, 2, 4),
+        (2, 0, 2), (2, 2, 4),
+        (3, 1, 3),
+    ]
+
+    panel_labels = list("abcdefg")
+
+    for i, xvar in enumerate(INDEP_VARS):
+        r, c0, c1 = positions[i]
+        ax = fig.add_subplot(gs[r, c0:c1])
+
+        for bio in bio_list:
+            fixed = {k: float(bio[k]) for k in INDEP_VARS if k != xvar}
+            X, Y = slice1_nd(results, dep, xvar, fixed=fixed, agg=agg)
+
+            ax.plot(
+                X, Y,
+                linewidth=st.line_w,
+                label=str(bio.get("label", bio.get("name", "")))
+            )
+
+            x_anchor = float(bio[xvar])
+            idx = int(np.argmin(np.abs(X - x_anchor)))
+            ax.scatter(
+                [X[idx]], [Y[idx]],
+                s=0.6 * st.dot_size,
+                marker=st.dot_marker,
+                facecolors="white",
+                edgecolors="black",
+                linewidths=max(0.8, 0.7 * st.dot_edge_wid),
+                zorder=5
+            )
+
+        if xvar in LOG_VARS:
+            _apply_log_ticks(
+                ax,
+                which="x",
+                numticks=max(4, st.log_numticks),
+                tick_len=max(2.0, 0.6 * st.tick_len),
+                tick_wid=max(0.8, 0.7 * st.tick_wid),
+            )
+        else:
+            ax.tick_params(
+                axis="x", which="major",
+                labelsize=max(8, 0.7 * st.tick_fs),
+                length=max(2.0, 0.6 * st.tick_len),
+                width=max(0.8, 0.7 * st.tick_wid),
+            )
+            ax.tick_params(
+                axis="x", which="minor",
+                labelsize=max(8, 0.7 * st.tick_fs),
+                length=max(1.5, 0.45 * st.tick_len),
+                width=max(0.8, 0.7 * st.tick_wid),
+            )
+
+        ax.tick_params(
+            axis="y", which="major",
+            labelsize=max(8, 0.7 * st.tick_fs),
+            length=max(2.0, 0.6 * st.tick_len),
+            width=max(0.8, 0.7 * st.tick_wid),
+        )
+        ax.tick_params(
+            axis="y", which="minor",
+            labelsize=max(8, 0.7 * st.tick_fs),
+            length=max(1.5, 0.45 * st.tick_len),
+            width=max(0.8, 0.7 * st.tick_wid),
+        )
+
+        ax.set_xlabel(_vname(xvar), fontsize=max(10, 0.7 * st.label_fs))
+        ax.set_ylabel(_dname(dep) if y_label is None else y_label,
+                      fontsize=max(10, 0.7 * st.label_fs))
+
+        if st.grid:
+            ax.grid(True, which="both", linestyle=st.grid_ls, alpha=st.grid_alpha)
+
+        ax.text(
+            -0.12, 1.03, f"({panel_labels[i]})",
+            transform=ax.transAxes,
+            ha="left", va="bottom",
+            fontsize=max(11, 0.8 * st.label_fs),
+        )
+
+        ax.legend(
+            title="Strain",
+            frameon=True,
+            fontsize=max(8, 0.5 * st.legend_fs),
+            title_fontsize=max(8, 0.5 * st.legend_title_fs),
+            loc=st.legend_loc,
+            ncol=1,
+        )
+
+    fig.subplots_adjust(left=0.08, right=0.98, bottom=0.05, top=0.98)
+    fname = f"{_dfile(dep)}_vs_all_vars_combined.png"
+    fig.savefig(outdir / fname, dpi=240)
+    plt.close(fig)
+
 def export_capacity_vs_vars_for_strains(
     results: dict,
     bio_list: list[dict],
@@ -2073,6 +2191,57 @@ def export_neff_vs_vars_for_strains(
     agg: str = "median",
 ) -> None:
     export_metric_vs_vars_for_strains(
+        results, bio_list, outdir,
+        dep="nH",
+        out_subdir="neff_curves",
+        y_label=r"Effective Hill coefficient $n_{\mathrm{eff}}$",
+        agg=agg,
+        style=style,
+    )
+
+def export_capacity_vs_vars_combined_for_strains(
+    results: dict,
+    bio_list: list[dict],
+    outdir: str | Path,
+    *,
+    style: CurveStyle | None = None,
+    agg: str = "median",
+) -> None:
+    export_metric_vs_vars_combined_for_strains(
+        results, bio_list, outdir,
+        dep="C_bits",
+        out_subdir="capacity_curves",
+        y_label=r"Channel capacity (bits)",
+        agg=agg,
+        style=style,
+    )
+
+def export_dynamic_range_vs_vars_combined_for_strains(
+    results: dict,
+    bio_list: list[dict],
+    outdir: str | Path,
+    *,
+    style: CurveStyle | None = None,
+    agg: str = "median",
+) -> None:
+    export_metric_vs_vars_combined_for_strains(
+        results, bio_list, outdir,
+        dep="DR_out",
+        out_subdir="dynamic_range_curves",
+        y_label=r"Dynamic range",
+        agg=agg,
+        style=style,
+    )
+
+def export_neff_vs_vars_combined_for_strains(
+    results: dict,
+    bio_list: list[dict],
+    outdir: str | Path,
+    *,
+    style: CurveStyle | None = None,
+    agg: str = "median",
+) -> None:
+    export_metric_vs_vars_combined_for_strains(
         results, bio_list, outdir,
         dep="nH",
         out_subdir="neff_curves",
@@ -3008,9 +3177,11 @@ def main():
         bio_list=bio_list,
         outdir=BASE_DIR,
         show_colorbar=True,
-        norm_mode="percentile",
-        low_pct=2.0,
-        high_pct=98.0,
+        norm_mode=HEATMAP_NORM_MODE,
+        low_pct=HEATMAP_LOW_PCT,
+        high_pct=HEATMAP_HIGH_PCT,
+        vmin=HEATMAP_VMIN,
+        vmax=HEATMAP_VMAX,
     )
 
     export_full_panel_pages_per_strain(
@@ -3048,6 +3219,10 @@ def main():
     export_capacity_vs_vars_for_strains(results, bio_list, base, style=curve_style)
     export_dynamic_range_vs_vars_for_strains(results, bio_list, base, style=curve_style)
     export_neff_vs_vars_for_strains(results, bio_list, base, style=curve_style)
+
+    export_capacity_vs_vars_combined_for_strains(results, bio_list, base, style=curve_style)
+    export_dynamic_range_vs_vars_combined_for_strains(results, bio_list, base, style=curve_style)
+    export_neff_vs_vars_combined_for_strains(results, bio_list, base, style=curve_style)
 
     export_r2_plot(results, base, deps=("C_bits", "nH", "DR_out"))
 
