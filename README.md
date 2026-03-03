@@ -9,8 +9,8 @@ This repository contains a Python script that runs a **7-dimensional parameter s
 ---
 
 ## Paper and data
-- **arXiv:** https://arxiv.org/abs/2601.02446
-- **Dryad dataset DOI (contains NPZ sweep output):** 10.5061/dryad.wpzgmsc3j
+- **arXiv:** [https://arxiv.org/abs/2601.02446](https://arxiv.org/abs/2601.02446)
+- **Dryad dataset DOI (contains NPZ sweep output):** [https://doi.org/10.5061/dryad.wpzgmsc3j](https://doi.org/10.5061/dryad.wpzgmsc3j)
   
 ---
 
