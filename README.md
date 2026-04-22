@@ -90,4 +90,4 @@ Important: the script internally constructs the sweep grids. If the downloaded N
 
 ## Funding / rights notice
 
-This software was created by Scripps College under Army Research Office (ARO) Award Number **W911NF-25-1-0260**. ARO, as the Federal awarding agency, reserves a royalty-free, nonexclusive and irrevocable right to reproduce, publish, or otherwise use this software for Federal purposes, and to authorize others to do so in accordance with **2 CFR 200.315(b)**.
+This data was produced by University of Maryland, College Park under Army Research Office (ARO) Award Number W911NF-25-1-0260. ARO, as the Federal awarding agency, reserves a royalty-free, nonexclusive and irrevocable right to reproduce, publish, or otherwise use this data for Federal purposes, and to authorize others to do so in accordance with 2 CFR 200.315(b).
