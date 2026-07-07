@@ -1,0 +1,12 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# Sweep outputs (published to Dryad, not GitHub)
+*.npz
+
+# Regenerated figure/table outputs
+sweep_figures/
+si_heatmaps/
+_heatmap_staging/
+outputs/

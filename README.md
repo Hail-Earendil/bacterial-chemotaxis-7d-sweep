@@ -1,45 +1,26 @@
 # bacterial-chemotaxis-7d-sweep
 
-Code and reproducible results pipeline for the paper:
+Code and reproducible-results pipeline for the paper:
 
-**“Apparent selection pressure for channel capacity and dynamic range in bacterial chemotactic sensors.”**
+**"An Investigation of the Channel Capacity of Bacterial Chemotactic Sensors for Low Chemoattractant Concentrations."**
 
-This repository contains a Python script that runs a **7-dimensional parameter sweep** of an Monod–Wyman–Changeux receptor model and exports the numerical outputs and visualizations used in the manuscript and supplementary information.
+This repository contains a single Python script that runs a **7-dimensional parameter sweep** of a Monod–Wyman–Changeux receptor model and regenerates every main-text figure and table used in the manuscript and supplementary information.
 
 ---
 
 ## Paper and data
 - **arXiv:** [https://arxiv.org/abs/2601.02446](https://arxiv.org/abs/2601.02446)
 - **Dryad dataset DOI (contains NPZ sweep output):** [https://doi.org/10.5061/dryad.wpzgmsc3j](https://doi.org/10.5061/dryad.wpzgmsc3j)
-  
----
-
-## What’s in this repository
-
-- **`7D_Sweep_Code.py`** — main script that:
-  - runs (or resumes) a 7D sweep
-  - saves results to a single `.npz` file
-  - exports tables, logs, and figures after the sweep completes
+  - *Note: this Dryad entry is being updated to include both NPZ files (`7D_Sweep_Results.npz` and `7D_Sweep_Results_keymer.npz`) used in the revised paper. Updated dataset coming soon.*
 
 ---
 
-## What the script produces
+## What's in this repository
 
-Running the script creates an output directory:
-
-`outputs/<RUN_TAG>/`
-
-- `<RUN_TAG>` defaults to today’s date in **`YYYYMMDD`** format
-
-A completed run typically contains:
-
-- **`7D_Sweep_Results.npz`** — the main 7D sweep results (NumPy archive)
-- **`logs/`** — warning summaries and event logs (helps diagnose edge cases)
-- **`tables/`** — exported CSV tables and Blahut–Arimoto convergence summaries
-- **`plots/`** — **2D** visualizations of the sweep (heatmaps)
-- **`curves/`** — **1D** visualizations of the sweep (line plots)
-
-Note: If a sweep is incomplete, the script saves a partial .npz file and exits cleanly. Post-processing runs only once the sweep is complete.
+- **`bacterial_chemotaxis.py`** — single-file library and CLI that:
+  - runs (or resumes) the 7D sweep
+  - saves results to `.npz` files
+  - regenerates every main-text figure and stdout table from those NPZ files
 
 ---
 
@@ -48,43 +29,47 @@ Note: If a sweep is incomplete, the script saves a partial .npz file and exits c
 - **Python 3.10+** recommended
 - **NumPy, SciPy, Matplotlib**
 
-If you don’t already have the dependencies:
-
 ```bash
 python3 -m pip install numpy scipy matplotlib
 ```
+
 ---
 
 ## Quick start
 
-### Option A — Run a new sweep (or resume an existing one)
+### Option A — Regenerate figures and tables from an existing NPZ file
 
-From the repository root:
-
-`python3 7D_Sweep_Code.py`
-
-Outputs will appear in:
-
-`outputs/<YYYYMMDD>/`
-
-The sweep is **resumable**: if `outputs/<RUN_TAG>/7D_Sweep_Results.npz` already exists, the script will continue from where it left off.
-
-### Option B — Regenerate tables/figures from an existing npz file
-
-If you already have a sweep file (e.g. downloaded from Dyrad), you can regenerate derived outputs without recomputing the sweep.
-
-1) Download the NPZ and place it here:
-
-`outputs/<RUN_TAG>/7D_Sweep_Results.npz`
-
-2) Set the run tag so the script reads from that folder, then run the script:
+If you already have both sweep files (e.g. downloaded from Dryad) placed next to the script as `7D_Sweep_Results.npz` and `7D_Sweep_Results_keymer.npz`, you can regenerate every main-text figure and table in about a minute:
 
 ```bash
-export SWEEP_RUN_TAG=<RUN_TAG>
-python3 7D_Sweep_Code.py
+python3 bacterial_chemotaxis.py --all
 ```
 
-Important: the script internally constructs the sweep grids. If the downloaded NPZ was generated using a different grid configuration than the one currently hardcoded in `7D_Sweep_Code.py`, the script may raise a *grid mismatch* error. To avoid this, keep the grid settings consistent with the dataset version you downloaded.
+Or run specific outputs:
+
+```bash
+python3 bacterial_chemotaxis.py --fig3-4        # Figs 3 and 4 (data figures)
+python3 bacterial_chemotaxis.py --fig5          # Fig 5 (C vs p_0 with ceiling curve)
+python3 bacterial_chemotaxis.py --strain-table  # per-strain C, DR, |n_eff|, gradient norms
+python3 bacterial_chemotaxis.py --correlation   # Table II: correlation matrix + global maxima
+python3 bacterial_chemotaxis.py --gradient-max  # Table IV: gradient-norm ratios
+python3 bacterial_chemotaxis.py --si-heatmaps   # 30 SI heatmap PDFs (Figs S1–S60)
+```
+
+Outputs: `./sweep_figures/` (figures), `./si_heatmaps/` (SI heatmaps). Tables print to stdout. Use `--output-dir DIR` or `--overleaf-dest DIR` to redirect.
+
+### Option B — Run a new sweep from scratch (or resume an interrupted one)
+
+The sweep itself is slow (multi-hour on a single core), resumable (checkpoint every 30 minutes), and only needed if you're reproducing the NPZ data files rather than the figures.
+
+```bash
+python3 bacterial_chemotaxis.py --run-mello-sweep    # Mello/Tu K_d region (~12h)
+python3 bacterial_chemotaxis.py --run-keymer-sweep   # Wingreen K_d region (~11h)
+```
+
+If `7D_Sweep_Results.npz` or `7D_Sweep_Results_keymer.npz` already exists in the working directory, the sweep resumes from where it left off. If a sweep is incomplete when the time budget expires, the script saves a partial NPZ and exits cleanly.
+
+Run `python3 bacterial_chemotaxis.py --help` for full CLI options.
 
 ---
 
