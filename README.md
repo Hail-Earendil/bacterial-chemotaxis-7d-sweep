@@ -10,8 +10,7 @@ This repository contains a single Python script that runs a **7-dimensional para
 
 ## Paper and data
 - **arXiv:** [https://arxiv.org/abs/2601.02446](https://arxiv.org/abs/2601.02446)
-- **Dryad dataset DOI (contains NPZ sweep output):** [https://doi.org/10.5061/dryad.wpzgmsc3j](https://doi.org/10.5061/dryad.wpzgmsc3j)
-  - *Note: this Dryad entry is being updated to include both NPZ files (`7D_Sweep_Results.npz` and `7D_Sweep_Results_keymer.npz`) used in the revised paper. Updated dataset coming soon.*
+- **Dryad dataset DOI (contains both NPZ sweep files):** [https://doi.org/10.5061/dryad.wpzgmsc3j](https://doi.org/10.5061/dryad.wpzgmsc3j)
 
 ---
 
